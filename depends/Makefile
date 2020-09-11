@@ -2,6 +2,7 @@
 
 SOURCES_PATH ?= $(BASEDIR)/sources
 BASE_CACHE ?= $(BASEDIR)/built
+VENDORED_CRATES ?= $(SOURCES_PATH)/vendored-crates
 SDK_PATH ?= $(BASEDIR)/SDKs
 NO_WALLET ?=
 FALLBACK_DOWNLOAD_PATH ?= https://download.z.cash/depends-sources
@@ -13,9 +14,6 @@ BASEDIR = $(CURDIR)
 HASH_LENGTH:=11
 DOWNLOAD_CONNECT_TIMEOUT:=10
 DOWNLOAD_RETRIES:=3
-CRATE_REGISTRY:=vendored-sources
-
-LIBRUSTZCASH_OVERRIDE ?=
 
 host:=$(BUILD)
 ifneq ($(HOST),)
@@ -61,7 +59,6 @@ endif
 $(host_arch)_$(host_os)_prefix=$(BASEDIR)/$(host)
 $(host_arch)_$(host_os)_host=$(host)
 host_prefix=$($(host_arch)_$(host_os)_prefix)
-crate_prefix=$(host_prefix)/$(CRATE_REGISTRY)
 build_prefix=$(host_prefix)/native
 build_host=$(build)
 
@@ -81,7 +78,7 @@ wallet_packages_$(NO_WALLET) = $(wallet_packages)
 
 packages += $($(host_arch)_$(host_os)_packages) $($(host_os)_packages) $(wallet_packages_)
 native_packages += $($(host_arch)_$(host_os)_native_packages) $($(host_os)_native_packages)
-all_packages = $(packages) $(rust_crates) $(native_packages)
+all_packages = $(packages) $(native_packages)
 
 meta_depends = Makefile funcs.mk builders/default.mk hosts/default.mk hosts/$(host_os).mk builders/$(build_os).mk cargo-checksum.sh
 
@@ -94,12 +91,14 @@ binutils_path=$($($(host_arch)_$(host_os)_native_binutils)_prefixbin)
 toolchain_path=$($($(host_arch)_$(host_os)_native_toolchain)_prefixbin)
 final_build_id_long+=$(shell $(build_SHA256SUM) config.site.in)
 final_build_id+=$(shell echo -n $(final_build_id_long) | $(build_SHA256SUM) | cut -c-$(HASH_LENGTH))
-$(host_prefix)/.stamp_$(final_build_id): $(native_packages) $(packages) $(rust_crates)
+$(host_prefix)/.stamp_$(final_build_id): $(native_packages) $(packages)
 	$(AT)rm -rf $(@D)
 	$(AT)mkdir -p $(@D)
 	$(AT)echo copying packages: $^
 	$(AT)echo to: $(@D)
 	$(AT)cd $(@D); $(foreach package,$^, tar xf $($(package)_cached); )
+	$(AT)echo Vendoring crates...
+	$(AT)$(@D)/native/bin/cargo vendor --locked --manifest-path $(BASEDIR)/../Cargo.toml $(VENDORED_CRATES)
 	$(AT)touch $@
 
 $(host_prefix)/share/config.site : config.site.in $(host_prefix)/.stamp_$(final_build_id)
@@ -154,6 +153,14 @@ check-packages: check-sources
 install: check-packages $(host_prefix)/share/config.site
 
 
+download-crates: native_rust
+	$(AT)rm -rf $(host_prefix)
+	$(AT)mkdir -p $(host_prefix)
+	$(AT)cd $(host_prefix)
+	$(AT)tar xf $(native_rust_cached)
+	$(AT)echo Vendoring crates...
+	$(AT)native/bin/cargo vendor --locked --manifest-path $(BASEDIR)/../Cargo.toml $(VENDORED_CRATES)
+
 download-one: check-sources $(all_sources)
 
 download-osx:
@@ -162,6 +169,6 @@ download-linux:
 	@$(MAKE) -s HOST=x86_64-unknown-linux-gnu download-one
 download-win:
 	@$(MAKE) -s HOST=x86_64-w64-mingw32 download-one
-download: download-osx download-linux download-win
+download: download-crates download-osx download-linux download-win
 
-.PHONY: install cached download-one download-osx download-linux download-win download check-packages check-sources
+.PHONY: install cached download-crates download-one download-osx download-linux download-win download check-packages check-sources

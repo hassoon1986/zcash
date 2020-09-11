@@ -14,7 +14,7 @@ if test -z $enable_wallet && test -n "@no_wallet@"; then
 fi
 
 RUST_TARGET="@rust_target@"
-RUST_VENDORED_SOURCES="$depends_prefix/vendored-sources"
+RUST_VENDORED_SOURCES="$depends_prefix/../sources/vendored-crates"
 
 if test x@host_os@ = xdarwin; then
   BREW=no
